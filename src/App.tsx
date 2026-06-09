@@ -5,6 +5,9 @@ const SUPABASE_URL = "https://jqoqczroydpxolrrpppa.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impxb3FjenJveWRweG9scnJwcHBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MTkzNTIsImV4cCI6MjA5NjM5NTM1Mn0.DFfNGRJ_DDWwLIiwzkaB-0Y7s2XpTiohGH-PNMwzyTY";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const DB_KEY = "vacapp7";
+const EMAILJS_SERVICE = "service_nddypor";
+const EMAILJS_TEMPLATE = "template_pyfoylq";
+const EMAILJS_KEY = "mTbhXul9SOOdg7MYq";
 
 const EMPS_DEF = ["Josefina Capalbo","Federico Hechtenkopf","Florencia Merkier","Solange Dabbah","Gonzalo Lottero","Kevin Rafael","Barbara Nietsch","Federico Ferrero"];
 const PASS = "admin123";
@@ -28,6 +31,28 @@ function grupos(datos,empN){const g={};(datos[empN]||[]).forEach(r=>{const k=r.g
 
 async function dbLoad(){try{const{data,error}=await supabase.from("vacaciones_app").select("data").eq("id",DB_KEY).single();if(error||!data)return null;return JSON.parse(data.data);}catch{return null;}}
 async function dbSave(state){try{await supabase.from("vacaciones_app").upsert({id:DB_KEY,data:JSON.stringify(state),updated_at:new Date().toISOString()});}catch(e){console.error("Error:",e);}}
+
+async function sendAdminEmail(empName, tipo, fechaIni, fechaFin, dias, comentario){
+  try{
+    await fetch("https://api.emailjs.com/api/v1.0/email/send",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        service_id:EMAILJS_SERVICE,
+        template_id:EMAILJS_TEMPLATE,
+        user_id:EMAILJS_KEY,
+        template_params:{
+          nombre:empName,
+          tipo:tipo==="vacaciones"?"🌴 Vacaciones":"🎉 Feriado",
+          fecha_ini:fechaIni.split("-").reverse().join("/"),
+          fecha_fin:fechaFin?fechaFin.split("-").reverse().join("/"):fechaIni.split("-").reverse().join("/"),
+          dias:dias===0.5?"½ día":dias+" día(s)",
+          comentario:comentario||"(sin comentario)"
+        }
+      })
+    });
+  }catch(e){console.error("EmailJS error:",e);}
+}
 
 function Btn({onClick,bg2,tc,disabled,children,small}){return <button onClick={onClick} disabled={disabled} style={{display:"block",width:"100%",marginTop:small?6:10,padding:small?"8px":"12px",background:bg2||PRI,color:tc||"#fff",border:"none",borderRadius:12,fontWeight:600,fontSize:small?13:16,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.5:1}}>{children}</button>;}
 function Card({title,children,style}){return <div style={{background:CARD,borderRadius:14,border:"1px solid "+BDR,padding:"14px",marginBottom:12,...style}}>{title&&<div style={{fontWeight:600,fontSize:15,color:TXT,marginBottom:12}}>{title}</div>}{children}</div>;}
@@ -114,6 +139,7 @@ export default function App(){
     if(editGid)regs=regs.filter(r=>(r.grupoId||r.id)!==editGid);
     save(null,null,{...datos,[empSel]:[...regs,...nuevos]});
     const total=segs.reduce((a,s)=>a+s.dias,0),cruzaMsg=segs.length>1?" (cruza año)":"";
+    sendAdminEmail(empSel,tipo,a,finR,diasFinal||total,form.comentario);
     if(gcal.token){const titulo=(tipo==="vacaciones"?"🌴 Vacaciones - ":"🎉 Feriado - ")+empSel;const ok=await gcal.crearEvento(titulo,a,finR);setMsgOk("✓ "+total+"d registrado(s)"+cruzaMsg+(ok?" y sincronizado con Google Calendar 🗓️":" (error al crear evento en Calendar)"));}
     else{setMsgOk("✓ "+total+"d registrado(s)"+cruzaMsg);}
     reset();
