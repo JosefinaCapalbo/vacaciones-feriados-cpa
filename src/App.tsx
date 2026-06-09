@@ -56,7 +56,7 @@ async function sendAdminEmail(empName, tipo, fechaIni, fechaFin, dias, comentari
 
 function Btn({onClick,bg2,tc,disabled,children,small}){return <button onClick={onClick} disabled={disabled} style={{display:"block",width:"100%",marginTop:small?6:10,padding:small?"8px":"12px",background:bg2||PRI,color:tc||"#fff",border:"none",borderRadius:12,fontWeight:600,fontSize:small?13:16,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.5:1}}>{children}</button>;}
 function Card({title,children,style}){return <div style={{background:CARD,borderRadius:14,border:"1px solid "+BDR,padding:"14px",marginBottom:12,...style}}>{title&&<div style={{fontWeight:600,fontSize:15,color:TXT,marginBottom:12}}>{title}</div>}{children}</div>;}
-function Saldo({label,uso,max,emoji,color,tc}){const pct=Math.min((uso/max)*100,100);return <div style={{background:color,borderRadius:14,padding:"14px"}}><div style={{fontSize:13,color:tc,fontWeight:600}}>{emoji} {label}</div><div style={{fontSize:28,fontWeight:700,color:tc}}>{max-uso}</div><div style={{fontSize:12,color:tc,opacity:0.8,marginBottom:8}}>días disponibles</div><div style={{background:"rgba(255,255,255,0.4)",borderRadius:6,height:6}}><div style={{background:tc,opacity:0.5,borderRadius:6,height:6,width:pct+"%"}}/></div><div style={{fontSize:11,color:tc,opacity:0.7,marginTop:4}}>{uso}/{max} usados</div></div>;}
+function Saldo({label,uso,max,emoji,color,tc}){const disponible=max-uso;const negativo=disponible<0;const pct=negativo?100:Math.min((uso/max)*100,100);const bgColor=negativo?"#fadadd":color;const textColor=negativo?"#b94a4a":tc;return <div style={{background:bgColor,borderRadius:14,padding:"14px"}}><div style={{fontSize:13,color:textColor,fontWeight:600}}>{emoji} {label}</div><div style={{fontSize:28,fontWeight:700,color:textColor}}>{disponible}</div><div style={{fontSize:12,color:textColor,opacity:0.8,marginBottom:8}}>{negativo?"días excedidos":"días disponibles"}</div><div style={{background:"rgba(255,255,255,0.4)",borderRadius:6,height:6}}><div style={{background:textColor,opacity:0.5,borderRadius:6,height:6,width:pct+"%"}}/></div><div style={{fontSize:11,color:textColor,opacity:0.7,marginTop:4}}>{uso}/{max} usados</div></div>;}
 function useGCal(){
   const [token,setToken]=useState(null);
   const [status,setStatus]=useState("idle");
@@ -131,7 +131,7 @@ export default function App(){
     const segs=splitAnio(a,finR);
     if(!segs.length)return setMsgErr("Sin días hábiles en el rango.");
     const base=(datos[empSel]||[]).filter(r=>editGid?(r.grupoId||r.id)!==editGid:true);
-    for(const seg of segs){const max=getMax(cfg,empSel,tipo),u=usados(base,tipo,seg.anio);if(u+seg.dias>max)return setMsgErr("Sin saldo en "+seg.anio+". Disponibles: "+(max-u)+"d.");}
+    // sin validación de saldo - permite negativos
     const gid=Date.now();
     const diasFinal=(tipo==="feriados"&&form.medioDia)?0.5:undefined;
     const nuevos=segs.map((seg,i)=>({id:gid+i,grupoId:gid,tipo,ini:seg.ini,fin:seg.fin,dias:diasFinal||seg.dias,anio:seg.anio,comentario:form.comentario||""}));
