@@ -27,7 +27,7 @@ function diasHab(a,b){if(!a||!b)return 0;let n=0,d=new Date(a+"T12:00:00"),e=new
 function splitAnio(a,b){const segs=[];let cur=new Date(a+"T12:00:00");const end=new Date(b+"T12:00:00");while(cur<=end){const y=cur.getFullYear(),yEnd=new Date(y,11,31,12,0,0),segEnd=yEnd<end?yEnd:end;const d=diasHab(toISO(cur),toISO(segEnd));if(d>0)segs.push({anio:y,ini:toISO(cur),fin:toISO(segEnd),dias:d});cur=new Date(segEnd);cur.setDate(cur.getDate()+1);}return segs;}
 function usados(regs,tipo,anio){return(regs||[]).filter(r=>r.tipo===tipo&&r.anio===anio).reduce((a,r)=>a+r.dias,0);}
 function getMax(cfg,nom,tipo){const c=(cfg[nom]||{});return tipo==="vacaciones"?(c.mv!=null?c.mv:MAX_DEF):(c.mf!=null?c.mf:MAX_DEF);}
-function grupos(datos,empN){const g={};(datos[empN]||[]).forEach(r=>{const k=r.grupoId||r.id;if(!g[k])g[k]={id:r.id,gid:k,tipo:r.tipo,segs:[],total:0};g[k].segs.push(r);g[k].total+=r.dias;});return Object.values(g).sort((a,b)=>b.gid-a.gid);}
+function grupos(datos,empN){const g={};(datos[empN]||[]).forEach(r=>{const k=r.grupoId||r.id;if(!g[k])g[k]={id:r.id,gid:k,tipo:r.tipo,segs:[],total:0};g[k].segs.push(r);g[k].total+=r.dias;});return Object.values(g).sort((a,b)=>{const fa=a.segs[0].ini,fb=b.segs[0].ini;return fb>fa?1:fb<fa?-1:0;});}
 
 async function dbLoad(){try{const{data,error}=await supabase.from("vacaciones_app").select("data").eq("id",DB_KEY).single();if(error||!data)return null;return JSON.parse(data.data);}catch{return null;}}
 async function dbSave(state){try{await supabase.from("vacaciones_app").upsert({id:DB_KEY,data:JSON.stringify(state),updated_at:new Date().toISOString()});}catch(e){console.error("Error:",e);}}
