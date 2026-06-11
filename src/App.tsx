@@ -113,6 +113,10 @@ export default function App(){
   const [nuevoNom,setNuevoNom]=useState("");
   const [nuevoErr,setNuevoErr]=useState("");
   const [filtroAnio,setFiltroAnio]=useState(new Date().getFullYear());
+  const [adminForm,setAdminForm]=useState({tipo:"vacaciones",ini:"",fin:"",medioDia:false,comentario:""});
+  const [adminEditGid,setAdminEditGid]=useState(null);
+  const [adminMsgOk,setAdminMsgOk]=useState("");
+  const [adminMsgErr,setAdminMsgErr]=useState("");
   const ANIO=new Date().getFullYear();
   const gcal=useGCal();
 
@@ -120,29 +124,56 @@ export default function App(){
 
   function save(e2,c2,d2){const e=e2||emps,c=c2!=null?c2:cfg,d=d2!=null?d2:datos;setEmps(e);setCfg(c);setDatos(d);dbSave({emps:e,cfg:c,datos:d});}
   function reset(){setForm({tipo:"vacaciones",ini:"",fin:"",medioDia:false,comentario:""});setEditGid(null);setMsgOk("");setMsgErr("");}
+  function resetAdmin(){setAdminForm({tipo:"vacaciones",ini:"",fin:"",medioDia:false,comentario:""});setAdminEditGid(null);setAdminMsgOk("");setAdminMsgErr("");}
 
+  // Empleado: solo puede agregar nuevo o editar comentario de uno existente
   async function cargar(){
     setMsgOk("");setMsgErr("");
     const{tipo,ini:a,fin:b}=form;
+    if(editGid){
+      // solo guarda comentario, mantiene todo lo demás igual
+      const nuevosRegs=(datos[empSel]||[]).map(r=>((r.grupoId||r.id)===editGid?{...r,comentario:form.comentario||""}:r));
+      save(null,null,{...datos,[empSel]:nuevosRegs});
+      setMsgOk("✓ Comentario actualizado.");
+      reset();
+      return;
+    }
     if(!a)return setMsgErr("Ingresá fecha de inicio.");
     if(tipo==="vacaciones"&&!b)return setMsgErr("Ingresá fecha de fin.");
     const finR=b||a;
     if(b&&b<a)return setMsgErr("Fin no puede ser anterior al inicio.");
     const segs=splitAnio(a,finR);
     if(!segs.length)return setMsgErr("Sin días hábiles en el rango.");
-    const base=(datos[empSel]||[]).filter(r=>editGid?(r.grupoId||r.id)!==editGid:true);
-    // sin validación de saldo - permite negativos
     const gid=Date.now();
     const diasFinal=(tipo==="feriados"&&form.medioDia)?0.5:undefined;
     const nuevos=segs.map((seg,i)=>({id:gid+i,grupoId:gid,tipo,ini:seg.ini,fin:seg.fin,dias:diasFinal||seg.dias,anio:seg.anio,comentario:form.comentario||""}));
-    let regs=(datos[empSel]||[]);
-    if(editGid)regs=regs.filter(r=>(r.grupoId||r.id)!==editGid);
-    save(null,null,{...datos,[empSel]:[...regs,...nuevos]});
+    save(null,null,{...datos,[empSel]:[...(datos[empSel]||[]),...nuevos]});
     const total=segs.reduce((a,s)=>a+s.dias,0),cruzaMsg=segs.length>1?" (cruza año)":"";
     sendAdminEmail(empSel,tipo,a,finR,diasFinal||total,form.comentario);
     if(gcal.token){const titulo=(tipo==="vacaciones"?"🌴 Vacaciones - ":"🎉 Feriado - ")+empSel;const ok=await gcal.crearEvento(titulo,a,finR);setMsgOk("✓ "+total+"d registrado(s)"+cruzaMsg+(ok?" y sincronizado con Google Calendar 🗓️":" (error al crear evento en Calendar)"));}
     else{setMsgOk("✓ "+total+"d registrado(s)"+cruzaMsg);}
     reset();
+  }
+
+  // Admin: puede cargar, editar todo y eliminar
+  async function adminCargar(){
+    setAdminMsgOk("");setAdminMsgErr("");
+    const{tipo,ini:a,fin:b}=adminForm;
+    if(!a)return setAdminMsgErr("Ingresá fecha de inicio.");
+    if(tipo==="vacaciones"&&!b)return setAdminMsgErr("Ingresá fecha de fin.");
+    const finR=b||a;
+    if(b&&b<a)return setAdminMsgErr("Fin no puede ser anterior al inicio.");
+    const segs=splitAnio(a,finR);
+    if(!segs.length)return setAdminMsgErr("Sin días hábiles en el rango.");
+    const gid=adminEditGid||Date.now();
+    const diasFinal=(tipo==="feriados"&&adminForm.medioDia)?0.5:undefined;
+    const nuevos=segs.map((seg,i)=>({id:gid+i,grupoId:gid,tipo,ini:seg.ini,fin:seg.fin,dias:diasFinal||seg.dias,anio:seg.anio,comentario:adminForm.comentario||""}));
+    let regs=(datos[adminEmp]||[]);
+    if(adminEditGid)regs=regs.filter(r=>(r.grupoId||r.id)!==adminEditGid);
+    save(null,null,{...datos,[adminEmp]:[...regs,...nuevos]});
+    const total=segs.reduce((a,s)=>a+s.dias,0),cruzaMsg=segs.length>1?" (cruza año)":"";
+    setAdminMsgOk("✓ "+total+"d registrado(s)"+cruzaMsg);
+    resetAdmin();
   }
 
   function eliminar(empN,gid){save(null,null,{...datos,[empN]:(datos[empN]||[]).filter(r=>(r.grupoId||r.id)!==gid)});}
@@ -168,19 +199,19 @@ export default function App(){
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}><div style={{width:42,height:42,borderRadius:"50%",background:AVA[emps.indexOf(empSel)%AVA.length],display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:15,color:TXT}}>{ini2(empSel)}</div><div><div style={{fontWeight:600,fontSize:16,color:TXT}}>{empSel}</div><div style={{fontSize:12,color:MUT}}>Panel de empleado</div></div><button onClick={()=>{setVista("login");reset();}} style={{marginLeft:"auto",background:"none",border:"1px solid "+BDR,borderRadius:8,padding:"6px 12px",color:MUT,cursor:"pointer",fontSize:13}}>Salir</button></div>
       <div style={{background:gcal.status==="ok"?"#d4f0c0":CARD,border:"1px solid "+BDR,borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:20}}>🗓️</span><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,color:TXT}}>Google Calendar</div><div style={{fontSize:12,color:MUT}}>{gcal.status==="ok"?"Conectado — los días se sincronizan automáticamente":gcal.status==="loading"?"Conectando...":gcal.status==="error"?"Error al conectar. Intentá de nuevo.":"Conectá para sincronizar tus días automáticamente"}</div></div>{gcal.status!=="ok"&&<button onClick={gcal.conectar} disabled={gcal.status==="loading"} style={{background:"#4285f4",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",opacity:gcal.status==="loading"?0.6:1}}>{gcal.status==="loading"?"...":"Conectar"}</button>}{gcal.status==="ok"&&<span style={{color:"#2d6a1f",fontWeight:700,fontSize:16}}>✓</span>}</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}><Saldo label="Vacaciones" uso={uV} max={mV} emoji="🌴" color="#c5dff8" tc="#2a6496"/><Saldo label="Feriados" uso={uF} max={mF} emoji="🎉" color="#d4f0c0" tc="#2d6a1f"/></div>
-      <Card title={editGid?"✏️ Editar registro":"Cargar días"}>
-        {editGid&&<div style={{fontSize:13,color:MUT,background:"#fde8b4",borderRadius:8,padding:"6px 10px",marginBottom:10}}>Editando. <button onClick={reset} style={{background:"none",border:"none",color:"#b94a4a",cursor:"pointer",fontWeight:600}}>Cancelar</button></div>}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Tipo</label><select value={form.tipo} onChange={e=>setForm({...form,tipo:e.target.value,fin:""})} style={inp}><option value="vacaciones">🌴 Vacaciones</option><option value="feriados">🎉 Feriado</option></select></div><div/><div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Fecha inicio</label><input type="date" value={form.ini} onChange={e=>setForm({...form,ini:e.target.value})} style={inp}/></div><div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Fecha fin {form.tipo==="feriados"&&<span style={{fontWeight:400}}>(opcional)</span>}</label><input type="date" value={form.fin} min={form.ini} onChange={e=>setForm({...form,fin:e.target.value})} style={inp}/></div></div>
-        {form.tipo==="feriados"&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"6px 0",padding:"8px 10px",background:"#fde8b4",borderRadius:8}}><input type="checkbox" id="medioDia" checked={form.medioDia} onChange={e=>setForm({...form,medioDia:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}}/><label htmlFor="medioDia" style={{fontSize:13,color:TXT,cursor:"pointer",fontWeight:500}}>½ Día (0.5 días hábiles)</label></div>}
+      <Card title={editGid?"✏️ Editar comentario":"Cargar días"}>
+        {editGid&&<div style={{fontSize:13,color:MUT,background:"#fde8b4",borderRadius:8,padding:"6px 10px",marginBottom:10}}>Solo podés editar el comentario. Para cambiar fechas contactá al administrador. <button onClick={reset} style={{background:"none",border:"none",color:"#b94a4a",cursor:"pointer",fontWeight:600}}>Cancelar</button></div>}
+        {!editGid&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Tipo</label><select value={form.tipo} onChange={e=>setForm({...form,tipo:e.target.value,fin:""})} style={inp}><option value="vacaciones">🌴 Vacaciones</option><option value="feriados">🎉 Feriado</option></select></div><div/><div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Fecha inicio</label><input type="date" value={form.ini} onChange={e=>setForm({...form,ini:e.target.value})} style={inp}/></div><div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Fecha fin {form.tipo==="feriados"&&<span style={{fontWeight:400}}>(opcional)</span>}</label><input type="date" value={form.fin} min={form.ini} onChange={e=>setForm({...form,fin:e.target.value})} style={inp}/></div></div>}
+        {!editGid&&form.tipo==="feriados"&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"6px 0",padding:"8px 10px",background:"#fde8b4",borderRadius:8}}><input type="checkbox" id="medioDia" checked={form.medioDia} onChange={e=>setForm({...form,medioDia:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}}/><label htmlFor="medioDia" style={{fontSize:13,color:TXT,cursor:"pointer",fontWeight:500}}>½ Día (0.5 días hábiles)</label></div>}
         <div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Comentario <span style={{fontWeight:400}}>(opcional)</span></label><input type="text" value={form.comentario} placeholder="Ej: viaje, reunión, etc." onChange={e=>setForm({...form,comentario:e.target.value})} style={{...inp,marginBottom:0}}/></div>
-        {prev>0&&<div style={{fontSize:13,color:MUT,background:"#fde8b4",borderRadius:8,padding:"6px 10px",margin:"6px 0"}}>📅 Días hábiles: <b style={{color:TXT}}>{prev}</b>{form.ini&&form.fin&&form.fin.slice(0,4)!==form.ini.slice(0,4)&&<span style={{color:PRI,marginLeft:8,fontWeight:600}}>⚠️ Cruza año</span>}</div>}
+        {!editGid&&prev>0&&<div style={{fontSize:13,color:MUT,background:"#fde8b4",borderRadius:8,padding:"6px 10px",margin:"6px 0"}}>📅 Días hábiles: <b style={{color:TXT}}>{prev}</b>{form.ini&&form.fin&&form.fin.slice(0,4)!==form.ini.slice(0,4)&&<span style={{color:PRI,marginLeft:8,fontWeight:600}}>⚠️ Cruza año</span>}</div>}
         {msgErr&&<p style={{color:"#b94a4a",fontSize:13,background:"#fadadd",borderRadius:8,padding:"8px 10px",margin:"6px 0"}}>{msgErr}</p>}
         {msgOk&&<p style={{color:"#2d6a1f",fontSize:13,background:"#d4f0c0",borderRadius:8,padding:"8px 10px",margin:"6px 0"}}>{msgOk}</p>}
-        <Btn onClick={cargar}>{editGid?"Guardar cambios":"Registrar días"}</Btn>
+        <Btn onClick={cargar}>{editGid?"Guardar comentario":"Registrar días"}</Btn>
       </Card>
       {gs.length>0&&<Card title="Mi historial">
         {aniosDisp.length>1&&<div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>{aniosDisp.map(a=><button key={a} onClick={()=>setFiltroAnio(a)} style={{background:filtroAnio===a?"#f7c5a8":BG,border:"1px solid "+BDR,borderRadius:8,padding:"4px 12px",cursor:"pointer",fontSize:13,fontWeight:filtroAnio===a?600:400,color:TXT}}>{a}</button>)}</div>}
-        {gs.filter(g=>g.segs.some(s=>s.anio===filtroAnio)).length===0?<p style={{color:MUT,fontSize:13}}>Sin registros en {filtroAnio}.</p>:gs.filter(g=>g.segs.some(s=>s.anio===filtroAnio)).map(g=>{const s0=g.segs[0],sN=g.segs[g.segs.length-1];return <div key={g.gid} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",borderBottom:"1px solid "+BDR}}><span style={{background:g.tipo==="vacaciones"?"#c5dff8":"#d4f0c0",color:g.tipo==="vacaciones"?"#2a6496":"#2d6a1f",borderRadius:8,padding:"3px 8px",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>{g.tipo==="vacaciones"?"🌴 Vac.":"🎉 Fer."}</span><span style={{fontSize:13,color:TXT,flex:1}}>{fmt(s0.ini)}{s0.ini!==sN.fin?" → "+fmt(sN.fin):""}{g.segs.length>1&&<span style={{fontSize:10,color:PRI,marginLeft:4}}>↩ cruza año</span>}</span><span style={{fontSize:13,color:MUT}}>{g.segs[0].dias===0.5?"½d":g.total+"d"}</span>{g.segs[0].comentario&&<span style={{fontSize:11,color:MUT,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:80}}>{g.segs[0].comentario}</span>}<button onClick={()=>{setEditGid(g.gid);setForm({tipo:g.tipo,ini:s0.ini,fin:sN.fin,medioDia:g.segs[0].dias===0.5,comentario:g.segs[0].comentario||""});setMsgOk("");setMsgErr("");}} style={{background:"none",border:"none",color:"#6a9fd8",cursor:"pointer",fontSize:18}}>✏️</button></div>;})}
+        {gs.filter(g=>g.segs.some(s=>s.anio===filtroAnio)).length===0?<p style={{color:MUT,fontSize:13}}>Sin registros en {filtroAnio}.</p>:gs.filter(g=>g.segs.some(s=>s.anio===filtroAnio)).map(g=>{const s0=g.segs[0],sN=g.segs[g.segs.length-1];return <div key={g.gid} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",borderBottom:"1px solid "+BDR}}><span style={{background:g.tipo==="vacaciones"?"#c5dff8":"#d4f0c0",color:g.tipo==="vacaciones"?"#2a6496":"#2d6a1f",borderRadius:8,padding:"3px 8px",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>{g.tipo==="vacaciones"?"🌴 Vac.":"🎉 Fer."}</span><span style={{fontSize:13,color:TXT,flex:1}}>{fmt(s0.ini)}{s0.ini!==sN.fin?" → "+fmt(sN.fin):""}{g.segs.length>1&&<span style={{fontSize:10,color:PRI,marginLeft:4}}>↩ cruza año</span>}</span><span style={{fontSize:13,color:MUT}}>{g.segs[0].dias===0.5?"½d":g.total+"d"}</span>{g.segs[0].comentario&&<span style={{fontSize:11,color:MUT,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:80}}>{g.segs[0].comentario}</span>}<button onClick={()=>{setEditGid(g.gid);setForm({tipo:g.tipo,ini:s0.ini,fin:sN.fin,medioDia:g.segs[0].dias===0.5,comentario:g.segs[0].comentario||""});setMsgOk("");setMsgErr("");}} title="Editar comentario" style={{background:"none",border:"none",color:"#6a9fd8",cursor:"pointer",fontSize:18}}>✏️</button></div>;})}
       </Card>}
     </div></div>;
   }
@@ -190,7 +221,40 @@ export default function App(){
     <div style={{display:"flex",alignItems:"center",marginBottom:14}}><span style={{fontSize:18,fontWeight:600,color:TXT}}>🗂️ Administración</span><button onClick={()=>setVista("login")} style={{marginLeft:"auto",background:"none",border:"1px solid "+BDR,borderRadius:8,padding:"6px 12px",color:MUT,cursor:"pointer",fontSize:13}}>Salir</button></div>
     <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>{[[" resumen","📊 Resumen"],["detalle","🔍 Detalle"],["gestion","⚙️ Gestión"]].map(([t,l])=><button key={t} onClick={()=>setAdminTab(t.trim())} style={{background:adminTab===t.trim()?"#f7c5a8":CARD,border:"1px solid "+BDR,borderRadius:10,padding:"8px 14px",cursor:"pointer",fontWeight:adminTab===t.trim()?600:400,color:TXT,fontSize:14}}>{l}</button>)}</div>
     {adminTab==="resumen"&&<div style={{display:"grid",gap:8}}>{[...emps].sort((a,b)=>a.localeCompare(b,"es")).map((e,i)=>{const r=datos[e]||[],uV=usados(r,"vacaciones",ANIO),uF=usados(r,"feriados",ANIO),mV=getMax(cfg,e,"vacaciones"),mF=getMax(cfg,e,"feriados"),oc=(cfg[e]||{}).oculto;return <div key={e} style={{background:CARD,borderRadius:12,border:"1px solid "+BDR,padding:"12px 14px",display:"flex",alignItems:"center",gap:10,opacity:oc?0.5:1}}><div style={{width:36,height:36,borderRadius:"50%",background:AVA[i%AVA.length],display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12,color:TXT,flexShrink:0}}>{ini2(e)}</div><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,color:TXT,fontSize:14}}>{e}{oc&&<span style={{fontSize:10,marginLeft:4,color:MUT}}>(oculto)</span>}</div><div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}><span style={{background:"#c5dff8",color:"#2a6496",borderRadius:8,padding:"2px 8px",fontSize:12}}>🌴 {uV}/{mV}</span><span style={{background:"#d4f0c0",color:"#2d6a1f",borderRadius:8,padding:"2px 8px",fontSize:12}}>🎉 {uF}/{mF}</span></div></div><div style={{textAlign:"right",fontSize:12,color:MUT,flexShrink:0}}><div>Vac.: <b style={{color:TXT}}>{mV-uV}</b></div><div>Fer.: <b style={{color:TXT}}>{mF-uF}</b></div></div></div>;})}</div>}
-    {adminTab==="detalle"&&<div><select value={adminEmp} onChange={e=>setAdminEmp(e.target.value)} style={{...inp,marginBottom:12}}>{[...emps].sort((a,b)=>a.localeCompare(b,"es")).map(e=><option key={e}>{e}</option>)}</select>{adminEmp&&<><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}><Saldo label="Vacaciones" uso={usados(aRegs,"vacaciones",ANIO)} max={getMax(cfg,adminEmp,"vacaciones")} emoji="🌴" color="#c5dff8" tc="#2a6496"/><Saldo label="Feriados" uso={usados(aRegs,"feriados",ANIO)} max={getMax(cfg,adminEmp,"feriados")} emoji="🎉" color="#d4f0c0" tc="#2d6a1f"/></div>{aGs.length===0?<p style={{color:MUT,fontSize:14}}>Sin registros.</p>:<Card title="Registros">{aAnios.length>1&&<div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>{aAnios.map(a=><button key={a} onClick={()=>setFiltroAnio(a)} style={{background:filtroAnio===a?"#f7c5a8":BG,border:"1px solid "+BDR,borderRadius:8,padding:"4px 12px",cursor:"pointer",fontSize:13,fontWeight:filtroAnio===a?600:400,color:TXT}}>{a}</button>)}</div>}{aGs.filter(g=>g.segs.some(s=>s.anio===filtroAnio)).map(g=>{const s0=g.segs[0],sN=g.segs[g.segs.length-1];return <div key={g.gid} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",borderBottom:"1px solid "+BDR}}><span style={{background:g.tipo==="vacaciones"?"#c5dff8":"#d4f0c0",color:g.tipo==="vacaciones"?"#2a6496":"#2d6a1f",borderRadius:8,padding:"3px 8px",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>{g.tipo==="vacaciones"?"🌴 Vac.":"🎉 Fer."}</span><span style={{fontSize:13,color:TXT,flex:1}}>{fmt(s0.ini)}{s0.ini!==sN.fin?" → "+fmt(sN.fin):""}</span><span style={{fontSize:13,color:MUT}}>{g.total}d</span></div>;})}</Card>}</>}</div>}
+    {adminTab==="detalle"&&<div>
+      <select value={adminEmp} onChange={e=>{setAdminEmp(e.target.value);resetAdmin();}} style={{...inp,marginBottom:12}}>{[...emps].sort((a,b)=>a.localeCompare(b,"es")).map(e=><option key={e}>{e}</option>)}</select>
+      {adminEmp&&<>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+          <Saldo label="Vacaciones" uso={usados(aRegs,"vacaciones",ANIO)} max={getMax(cfg,adminEmp,"vacaciones")} emoji="🌴" color="#c5dff8" tc="#2a6496"/>
+          <Saldo label="Feriados" uso={usados(aRegs,"feriados",ANIO)} max={getMax(cfg,adminEmp,"feriados")} emoji="🎉" color="#d4f0c0" tc="#2d6a1f"/>
+        </div>
+        <Card title={adminEditGid?"✏️ Editar registro":"➕ Cargar días"}>
+          {adminEditGid&&<div style={{fontSize:13,color:MUT,background:"#fde8b4",borderRadius:8,padding:"6px 10px",marginBottom:10}}>Editando registro. <button onClick={resetAdmin} style={{background:"none",border:"none",color:"#b94a4a",cursor:"pointer",fontWeight:600}}>Cancelar</button></div>}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Tipo</label><select value={adminForm.tipo} onChange={e=>setAdminForm({...adminForm,tipo:e.target.value,fin:""})} style={inp}><option value="vacaciones">🌴 Vacaciones</option><option value="feriados">🎉 Feriado</option></select></div>
+            <div/>
+            <div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Fecha inicio</label><input type="date" value={adminForm.ini} onChange={e=>setAdminForm({...adminForm,ini:e.target.value})} style={inp}/></div>
+            <div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Fecha fin {adminForm.tipo==="feriados"&&<span style={{fontWeight:400}}>(opcional)</span>}</label><input type="date" value={adminForm.fin} min={adminForm.ini} onChange={e=>setAdminForm({...adminForm,fin:e.target.value})} style={inp}/></div>
+          </div>
+          {adminForm.tipo==="feriados"&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"6px 0",padding:"8px 10px",background:"#fde8b4",borderRadius:8}}><input type="checkbox" id="adminMedioDia" checked={adminForm.medioDia} onChange={e=>setAdminForm({...adminForm,medioDia:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}}/><label htmlFor="adminMedioDia" style={{fontSize:13,color:TXT,cursor:"pointer",fontWeight:500}}>½ Día (0.5 días hábiles)</label></div>}
+          <div><label style={{fontSize:13,color:MUT,display:"block",marginBottom:4}}>Comentario <span style={{fontWeight:400}}>(opcional)</span></label><input type="text" value={adminForm.comentario} placeholder="Ej: viaje, reunión, etc." onChange={e=>setAdminForm({...adminForm,comentario:e.target.value})} style={{...inp,marginBottom:0}}/></div>
+          {adminMsgErr&&<p style={{color:"#b94a4a",fontSize:13,background:"#fadadd",borderRadius:8,padding:"8px 10px",margin:"6px 0"}}>{adminMsgErr}</p>}
+          {adminMsgOk&&<p style={{color:"#2d6a1f",fontSize:13,background:"#d4f0c0",borderRadius:8,padding:"8px 10px",margin:"6px 0"}}>{adminMsgOk}</p>}
+          <Btn onClick={adminCargar}>{adminEditGid?"Guardar cambios":"Registrar días"}</Btn>
+        </Card>
+        {aGs.length>0&&<Card title="Registros">
+          {aAnios.length>1&&<div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>{aAnios.map(a=><button key={a} onClick={()=>setFiltroAnio(a)} style={{background:filtroAnio===a?"#f7c5a8":BG,border:"1px solid "+BDR,borderRadius:8,padding:"4px 12px",cursor:"pointer",fontSize:13,fontWeight:filtroAnio===a?600:400,color:TXT}}>{a}</button>)}</div>}
+          {aGs.filter(g=>g.segs.some(s=>s.anio===filtroAnio)).length===0?<p style={{color:MUT,fontSize:13}}>Sin registros en {filtroAnio}.</p>:aGs.filter(g=>g.segs.some(s=>s.anio===filtroAnio)).map(g=>{const s0=g.segs[0],sN=g.segs[g.segs.length-1];return <div key={g.gid} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",borderBottom:"1px solid "+BDR}}>
+            <span style={{background:g.tipo==="vacaciones"?"#c5dff8":"#d4f0c0",color:g.tipo==="vacaciones"?"#2a6496":"#2d6a1f",borderRadius:8,padding:"3px 8px",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>{g.tipo==="vacaciones"?"🌴 Vac.":"🎉 Fer."}</span>
+            <span style={{fontSize:13,color:TXT,flex:1}}>{fmt(s0.ini)}{s0.ini!==sN.fin?" → "+fmt(sN.fin):""}{g.segs.length>1&&<span style={{fontSize:10,color:PRI,marginLeft:4}}>↩ cruza año</span>}</span>
+            <span style={{fontSize:13,color:MUT}}>{g.segs[0].dias===0.5?"½d":g.total+"d"}</span>
+            {g.segs[0].comentario&&<span style={{fontSize:11,color:MUT,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:80}}>{g.segs[0].comentario}</span>}
+            <button onClick={()=>{setAdminEditGid(g.gid);setAdminForm({tipo:g.tipo,ini:s0.ini,fin:sN.fin,medioDia:g.segs[0].dias===0.5,comentario:g.segs[0].comentario||""});setAdminMsgOk("");setAdminMsgErr("");}} title="Editar" style={{background:"none",border:"none",color:"#6a9fd8",cursor:"pointer",fontSize:18}}>✏️</button>
+            <button onClick={()=>{if(window.confirm("¿Eliminás este registro de "+adminEmp+"?")){eliminar(adminEmp,g.gid);resetAdmin();}}} title="Eliminar" style={{background:"none",border:"none",color:"#b94a4a",cursor:"pointer",fontSize:18}}>🗑️</button>
+          </div>;})}
+        </Card>}
+      </>}
+    </div>}
     {adminTab==="gestion"&&<div style={{display:"grid",gap:12}}>
       <Card title="➕ Agregar empleado"><input value={nuevoNom} onChange={e=>setNuevoNom(e.target.value)} placeholder="Nombre completo" style={inp} onKeyDown={e=>{if(e.key==="Enter"){const n=nuevoNom.trim();if(!n)return setNuevoErr("Ingresá un nombre.");if(emps.includes(n))return setNuevoErr("Ya existe.");save([...emps,n],null,null);setNuevoNom("");setNuevoErr("");}}}/>{nuevoErr&&<p style={{color:"#b94a4a",fontSize:13,margin:"4px 0"}}>{nuevoErr}</p>}<Btn onClick={()=>{const n=nuevoNom.trim();if(!n)return setNuevoErr("Ingresá un nombre.");if(emps.includes(n))return setNuevoErr("Ya existe.");save([...emps,n],null,null);setNuevoNom("");setNuevoErr("");}}>Agregar empleado</Btn></Card>
       <Card title="👤 Configurar empleados"><div style={{display:"grid",gap:8}}>{[...emps].sort((a,b)=>a.localeCompare(b,"es")).map((e,i)=>{const c=cfg[e]||{},mV=c.mv!=null?c.mv:MAX_DEF,mF=c.mf!=null?c.mf:MAX_DEF,oc=c.oculto||false;return <div key={e} style={{background:BG,borderRadius:10,padding:"12px",border:"1px solid "+BDR,opacity:oc?0.65:1}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><div style={{width:30,height:30,borderRadius:"50%",background:AVA[i%AVA.length],display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:11,color:TXT,flexShrink:0}}>{ini2(e)}</div><span style={{fontWeight:600,color:TXT,fontSize:14,flex:1}}>{e}</span><button onClick={()=>{const nc={...cfg,[e]:{...(cfg[e]||{}),oculto:!oc}};save(null,nc,null);}} style={{background:oc?"#d4f0c0":"#fadadd",border:"none",borderRadius:8,padding:"4px 10px",fontSize:12,cursor:"pointer",color:oc?"#2d6a1f":"#b94a4a",fontWeight:600}}>{oc?"👁 Mostrar":"🙈 Ocultar"}</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><div><label style={{fontSize:12,color:MUT,display:"block",marginBottom:3}}>🌴 Días vac./año</label><input type="number" min="0" max="365" value={mV} onChange={ev=>{const nc={...cfg,[e]:{...(cfg[e]||{}),mv:parseInt(ev.target.value)||0}};save(null,nc,null);}} style={{...inp,marginBottom:0}}/></div><div><label style={{fontSize:12,color:MUT,display:"block",marginBottom:3}}>🎉 Días fer./año</label><input type="number" min="0" max="365" value={mF} onChange={ev=>{const nc={...cfg,[e]:{...(cfg[e]||{}),mf:parseInt(ev.target.value)||0}};save(null,nc,null);}} style={{...inp,marginBottom:0}}/></div></div></div>;})}</div></Card>
