@@ -13,6 +13,7 @@ const EMPS_DEF = ["Josefina Capalbo","Federico Hechtenkopf","Florencia Merkier",
 const PASS = "admin123";
 const MAX_DEF = 10;
 const GCAL_CLIENT_ID = "1072225517712-ajq2f5fif713m6qob8jim6pkprrmi75b.apps.googleusercontent.com";
+const GCAL_COMPANY_CALENDAR_ID = "c_43ddd19ee5f9949766381cfc6157cf55934fd844c65b4055512d044088896e07@group.calendar.google.com";
 const GCAL_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const COLORS = ["#e8874a","#3a8fd4","#4aad4a","#9b59b6","#d4a017","#c0392b","#16a085","#8e44ad"];
@@ -62,7 +63,7 @@ function useGCal(){
   const [status,setStatus]=useState("idle");
   function conectar(){setStatus("loading");if(!window.google?.accounts?.oauth2){const s=document.createElement("script");s.src="https://accounts.google.com/gsi/client";s.onload=()=>iniciar();s.onerror=()=>setStatus("error");document.head.appendChild(s);}else{iniciar();}}
   function iniciar(){try{const client=window.google.accounts.oauth2.initTokenClient({client_id:GCAL_CLIENT_ID,scope:GCAL_SCOPE,callback:(resp)=>{if(resp.error){setStatus("error");return;}setToken(resp.access_token);setStatus("ok");}});client.requestAccessToken();}catch(e){setStatus("error");}}
-  async function crearEvento(titulo,iniISO,finISO){if(!token)return false;const finD=new Date(finISO+"T12:00:00");finD.setDate(finD.getDate()+1);try{const r=await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({summary:titulo,start:{date:iniISO},end:{date:toISO(finD)}})});return r.ok;}catch{return false;}}
+  async function crearEvento(titulo,iniISO,finISO){if(!token)return false;const finD=new Date(finISO+"T12:00:00");finD.setDate(finD.getDate()+1);try{const r=await fetch("https://www.googleapis.com/calendar/v3/calendars/"+encodeURIComponent(GCAL_COMPANY_CALENDAR_ID)+"/events",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({summary:titulo,start:{date:iniISO},end:{date:toISO(finD)}})});return r.ok;}catch{return false;}}
   return {token,status,conectar,crearEvento};
 }
 
@@ -159,7 +160,7 @@ export default function App(){
     save(null,null,{...datos,[empSel]:[...(datos[empSel]||[]),...nuevos]});
     const total=segs.reduce((a,s)=>a+s.dias,0),cruzaMsg=segs.length>1?" (cruza año)":"";
     sendAdminEmail(empSel,tipo,a,finR,diasFinal||total,form.comentario);
-    if(gcal.token){const titulo=(tipo==="vacaciones"?"🌴 Vacaciones - ":"🎉 Feriado - ")+empSel;const ok=await gcal.crearEvento(titulo,a,finR);setMsgOk("✓ "+total+"d registrado(s)"+cruzaMsg+(ok?" y sincronizado con Google Calendar 🗓️":" (error al crear evento en Calendar)"));}
+    if(gcal.token){const titulo=(tipo==="vacaciones"?"🌴 Vacaciones - ":"🎉 Feriado - ")+empSel;const ok=await gcal.crearEvento(titulo,a,finR);setMsgOk("✓ "+total+"d registrado(s)"+cruzaMsg+(ok?" y agregado al calendario de la empresa 🗓️":" (error al crear evento en el calendario de la empresa)"));}
     else{setMsgOk("✓ "+total+"d registrado(s)"+cruzaMsg);}
     reset();
   }
@@ -206,7 +207,7 @@ export default function App(){
     const gs=grupos(datos,empSel),aniosDisp=[...new Set(regs.map(r=>r.anio))].sort((a,b)=>b-a);
     return <div style={page}><div style={{maxWidth:500,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}><div style={{width:42,height:42,borderRadius:"50%",background:AVA[emps.indexOf(empSel)%AVA.length],display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:15,color:TXT}}>{ini2(empSel)}</div><div><div style={{fontWeight:600,fontSize:16,color:TXT}}>{empSel}</div><div style={{fontSize:12,color:MUT}}>Panel de empleado</div></div><button onClick={()=>{setVista("login");reset();}} style={{marginLeft:"auto",background:"none",border:"1px solid "+BDR,borderRadius:8,padding:"6px 12px",color:MUT,cursor:"pointer",fontSize:13}}>Salir</button></div>
-      <div style={{background:gcal.status==="ok"?"#d4f0c0":CARD,border:"1px solid "+BDR,borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:20}}>🗓️</span><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,color:TXT}}>Google Calendar</div><div style={{fontSize:12,color:MUT}}>{gcal.status==="ok"?"Conectado — los días se sincronizan automáticamente":gcal.status==="loading"?"Conectando...":gcal.status==="error"?"Error al conectar. Intentá de nuevo.":"Conectá para sincronizar tus días automáticamente"}</div></div>{gcal.status!=="ok"&&<button onClick={gcal.conectar} disabled={gcal.status==="loading"} style={{background:"#4285f4",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",opacity:gcal.status==="loading"?0.6:1}}>{gcal.status==="loading"?"...":"Conectar"}</button>}{gcal.status==="ok"&&<span style={{color:"#2d6a1f",fontWeight:700,fontSize:16}}>✓</span>}</div>
+      <div style={{background:gcal.status==="ok"?"#d4f0c0":CARD,border:"1px solid "+BDR,borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:20}}>🗓️</span><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,color:TXT}}>Google Calendar</div><div style={{fontSize:12,color:MUT}}>{gcal.status==="ok"?"Conectado — tus días se agregan al calendario de la empresa":gcal.status==="loading"?"Conectando...":gcal.status==="error"?"Error al conectar. Intentá de nuevo.":"Conectá para que tus días se agreguen al calendario de la empresa"}</div></div>{gcal.status!=="ok"&&<button onClick={gcal.conectar} disabled={gcal.status==="loading"} style={{background:"#4285f4",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",opacity:gcal.status==="loading"?0.6:1}}>{gcal.status==="loading"?"...":"Conectar"}</button>}{gcal.status==="ok"&&<span style={{color:"#2d6a1f",fontWeight:700,fontSize:16}}>✓</span>}</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}><Saldo label="Vacaciones" uso={uV} max={mV} emoji="🌴" color="#c5dff8" tc="#2a6496"/><Saldo label="Feriados" uso={uF} max={mF} emoji="🎉" color="#d4f0c0" tc="#2d6a1f"/></div>
       <Card title={editGid?"✏️ Editar comentario":"Cargar días"}>
         {editGid&&<div style={{fontSize:13,color:MUT,background:"#fde8b4",borderRadius:8,padding:"6px 10px",marginBottom:10}}>Solo podés editar el comentario. Para cambiar fechas contactá al administrador. <button onClick={reset} style={{background:"none",border:"none",color:"#b94a4a",cursor:"pointer",fontWeight:600}}>Cancelar</button></div>}
